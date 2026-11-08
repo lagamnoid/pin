@@ -83,6 +83,13 @@ impl Config {
         self.pins.clear();
     }
 
+    fn global(&self) {
+        for (loc, v) in &self.pins {
+            println!("    => {}:", loc);
+            self.list(loc);
+        }
+    }
+
 }
 
 
@@ -156,6 +163,7 @@ fn main() {
         },
         "clear" => config.clear(&cwd),
         "purge" => config.purge(),
+        "global" => config.global(),
         _ => eprintln!("Error: incorrect arguments (try pin help)"),
     }
     config.write(&path);
