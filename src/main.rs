@@ -3,6 +3,7 @@ use std::env::args;
 use std::io;
 use std::env;
 use std::fs::File;
+use std::fs;
 use std::io::{BufReader, BufWriter};
 use std::collections::HashMap;
 use std::path::Path;
@@ -93,6 +94,8 @@ impl Config {
 }
 
 
+
+
 fn load_config(path: &PathBuf) -> Config {
     let file = File::open(path).unwrap_or_else(|_| {
         eprintln!("Error: failed to open file");
@@ -122,11 +125,18 @@ fn get_datetime() -> String {
     now.format("%m-%d %H:%M").to_string()
 }
 
+fn check_existtown(path: &PathBuf) {
+    if !(path.exists()) {
+        fs::write(path, "{\"pins\": {}}");
+    }
+}
+
 
 fn main() {
     let cwd: String = env::current_dir().expect("failed to get cwd").to_string_lossy().into_owned();
     let args: Vec<String> = env::args().collect();
     let path = get_path();
+    check_existtown(&path);
     let mut config: Config = load_config(&path);
     if args.len() < 2 {
         config.list(&cwd);
