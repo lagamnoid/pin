@@ -23,6 +23,18 @@ pin rmdead - delete notes for directoties that no longer exist
 ";
 
 
+fn truncate(s: &str, max_len: usize) -> String {
+    if s.chars().count() <= max_len {
+        return s.to_string();
+    }
+    // Reserve 3 chars for "..."
+    let take = max_len.saturating_sub(3);
+    let mut result: String = s.chars().take(take).collect();
+    result.push_str("...");
+    result
+}
+
+
 #[derive(Debug, Serialize, Deserialize)]
 struct Pin {
     content: String,
@@ -57,7 +69,7 @@ impl Config {
         }
         let pinmen = self.pins.get(location).unwrap();
         for (i, p) in pinmen.iter().enumerate() {
-            println!("#{}        {}        [{}]", i+1, p.content, p.datetime);
+            println!("#{}        {:<54}[{}]", i+1, truncate(&p.content, 50), p.datetime);
         }
     }
 
@@ -92,8 +104,6 @@ impl Config {
     }
 
 }
-
-
 
 
 fn load_config(path: &PathBuf) -> Config {
