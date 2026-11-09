@@ -1,6 +1,6 @@
 #![allow(unused)]
 use std::env::args;
-use std::io;
+use std::io::{self, Write};
 use std::env;
 use std::fs::File;
 use std::fs;
@@ -14,12 +14,13 @@ use chrono::Local;
 
 const HELP_MESSAGE: &str = "pin - list notes for cwd
 pin add \"<text>\" - add note to current directory
+pin show <idx> - show full content of not for cwd at index
 pin del <idx> - delete note for cwd at index
 pin clear - delete all notes for cwd
 pin purge - delete all notes for all directories
 pin global - list notes for all directories
 pin move <src> <dest> - move notes from one directory to another
-pin rmdead - delete notes for directoties that no longer exist
+pin rmdead <-c/--confirm (optional)> - delete notes for directoties that no longer exist (use -c to ask for confirmation for every directory)
 ";
 
 
@@ -35,14 +36,14 @@ fn truncate(s: &str, max_len: usize) -> String {
 }
 
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct Pin {
     content: String,
     datetime: String,
 }
 
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct Config {
     pins: HashMap<String, Vec<Pin>>,
 }
@@ -85,6 +86,18 @@ impl Config {
         self.pins.get_mut(location).unwrap().remove(index - 1);
     }
 
+    fn show_pin(&self, location: &str, index: usize) {
+        if !(self.pins.contains_key(location)) {
+            println!("No pins for current directory");
+            return;
+        }
+        if index - 1 > self.pins.get(location).unwrap().len() - 1 {
+            println!("Error: index out of range");
+            return;
+        }
+        println!("{}", self.pins.get(location).unwrap()[index - 1].content);
+    }
+
     fn clear(&mut self, location: &str) {
         if !(self.pins.contains_key(location)) {
             return;
@@ -101,6 +114,46 @@ impl Config {
             println!("    => {}:", loc);
             self.list(loc);
         }
+    }
+
+    fn rmdead(&mut self, confirm: bool) {
+        for (loc, v) in self.pins.clone() {
+            let path = PathBuf::from(&loc);
+            println!("Checking path: {}", loc);
+            if !(path.exists()) {
+                if confirm {
+                    let mut e = String::new();
+                    println!("Path '{}' does not exist.", loc);
+                    print!("Remove path? [y/n]: ");
+                    io::stdout().flush().unwrap();
+                    io::stdin().read_line(&mut e);
+                    let eman = e.trim_end();
+                    if eman == "y" {
+                        self.pins.remove(&loc);
+                        println!("Path removed");
+                    } else {
+                        println!("Deletion canceled");
+                    }
+                } else {
+                    println!("Path '{}' does not exist and has been removed.", loc);
+                    self.pins.remove(&loc);
+                }
+            }
+        }
+    }
+
+    fn move_notes(&mut self, src: String, dest: String) {
+        let mut pinmen = self.pins.get(&src).unwrap_or_else(|| {
+            eprintln!("Error: path '{}' has no notes", src);
+            process::exit(1);
+        }).to_vec();
+        if self.pins.contains_key(&dest) {
+            self.pins.get_mut(&dest).unwrap().append(&mut pinmen);
+        } else {
+            self.pins.insert(dest, pinmen);
+        }
+        self.pins.remove(&src);
+        
     }
 
 }
@@ -145,6 +198,7 @@ fn check_existtown(path: &PathBuf) {
 fn main() {
     let cwd: String = env::current_dir().expect("failed to get cwd").to_string_lossy().into_owned();
     let args: Vec<String> = env::args().collect();
+    let argc = args.len();
     let path = get_path();
     check_existtown(&path);
     let mut config: Config = load_config(&path);
@@ -159,7 +213,7 @@ fn main() {
             print!("{}", HELP_MESSAGE);
         }
         "add" => {
-            if args.len() < 3 {
+            if argc < 3 {
                 eprintln!("Error: missing argument");
                 process::exit(1)
             }
@@ -168,7 +222,7 @@ fn main() {
             }
         },
         "del" => {
-            if args.len() < 3 {
+            if argc < 3 {
                 eprintln!("Error: missing argument");
                 process::exit(1)
             }
@@ -184,9 +238,40 @@ fn main() {
         "clear" => config.clear(&cwd),
         "purge" => config.purge(),
         "global" => config.global(),
+        "rmdead" => config.rmdead(argc >= 3 && (args[2] == "-c" || args[2] == "--confirm")),
+        "move" => {
+            if argc < 3 {
+                eprintln!("Error: missing arguments");
+                process::exit(1)
+            }
+            let src: String = if args[2].starts_with('\\') {
+                args[2].clone()
+            } else {
+                cwd.clone() + "/" + &args[2]
+            };
+            let dest: String = if args[3].starts_with('\\') {
+                args[3].clone()
+            } else {
+                cwd.clone() + "/" + &args[3]
+            };
+            config.move_notes(src, dest);
+        },
+        "show" => {
+            if argc < 3 {
+                eprintln!("Error: missing argument");
+                process::exit(1)
+            }
+            let num: usize = match args[2].parse() {
+                Ok(n) => n,
+                Err(_) => {
+                    eprintln!("Error: index must be an integer");
+                    std::process::exit(1);
+                }
+            };
+            config.show_pin(&cwd, num);
+        },
         _ => eprintln!("Error: incorrect arguments (try pin help)"),
     }
     config.write(&path);
 
 }
-
